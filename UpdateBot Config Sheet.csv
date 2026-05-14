@@ -1,0 +1,2 @@
+property_name,slack_channel_id,live_doc_id,slides_template_id,cell_cash_balance,what_we_are_reading_doc_id,address,purchase_date,purchase_price,size_sqft,num_units,year_built,market_name,last_sync_timestamp
+1820 Aguila Azteca LLC,[SLACK_CHANNEL_ID],[LIVE_DOC_ID],[SLIDES_TEMPLATE_ID],[SHEET_ID]:[CELL_REF],[WHAT_WE_ARE_READING_DOC_ID],"1820 Aguila Azteca Dr, Laredo, TX 78043",4/24/2025,"$12,960,000",108248 sq ft,2,2000,Laredo,

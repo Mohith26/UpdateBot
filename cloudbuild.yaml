@@ -1,0 +1,44 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -t
+      - '$_REGION-docker.pkg.dev/$PROJECT_ID/updatebot/updatebot:$COMMIT_SHA'
+      - .
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - '$_REGION-docker.pkg.dev/$PROJECT_ID/updatebot/updatebot:$COMMIT_SHA'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        IMAGE=$_REGION-docker.pkg.dev/$PROJECT_ID/updatebot/updatebot:$COMMIT_SHA
+        for JOB in slack-sync weekly-notify monthly-report; do
+          gcloud run jobs update $JOB \
+            --image $$IMAGE \
+            --region $_REGION \
+            --quiet || \
+          gcloud run jobs create $JOB \
+            --image $$IMAGE \
+            --region $_REGION \
+            --args $JOB \
+            --service-account $_SERVICE_ACCOUNT \
+            --set-secrets SLACK_BOT_TOKEN=slack-bot-token:latest \
+            --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest \
+            --set-env-vars CONFIG_SHEET_ID=$_CONFIG_SHEET_ID \
+            --set-env-vars REVIEW_CHANNEL_ID=$_REVIEW_CHANNEL_ID \
+            --quiet
+        done
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE_ACCOUNT: ''   # e.g. updatebot-sa@harbor-updatebot.iam.gserviceaccount.com
+  _CONFIG_SHEET_ID: ''
+  _REVIEW_CHANNEL_ID: ''
+
+images:
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/updatebot/updatebot:$COMMIT_SHA'

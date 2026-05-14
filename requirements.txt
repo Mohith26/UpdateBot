@@ -1,0 +1,6 @@
+anthropic>=0.28.0
+slack-sdk>=3.27.0
+google-api-python-client>=2.127.0
+google-auth>=2.29.0
+google-auth-httplib2>=0.2.0
+python-dateutil>=2.9.0
