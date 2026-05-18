@@ -3,7 +3,12 @@ import time
 import config
 from services.slack_client import SlackRateLimitExceeded, get_messages_since
 from services.claude_client import extract_property_updates
-from services.google_docs import prepend_update
+from services.google_docs import (
+    find_month_section,
+    prepend_update,
+    read_recent_monthly_sections,
+    replace_section,
+)
 from services.run_log import finalize_run, start_run
 
 
@@ -76,16 +81,41 @@ def run() -> None:
                 })
                 continue
 
+            # Look up whether the doc already has a section for this month;
+            # if so we'll MERGE into it instead of prepending a fresh block.
+            # Doc lookup is best-effort — a failure here should not block the
+            # rest of the run, so on error we fall through to the prepend path.
+            month_name = now.strftime("%B")
+            year = now.year
+            existing = None
+            tone_examples: list[str] = []
+            if prop.live_doc_id:
+                try:
+                    existing = find_month_section(prop.live_doc_id, month_name, year)
+                except Exception as e:
+                    print(f"    WARN: failed to inspect live doc for existing {month_name} {year} section: {e}; will prepend")
+                try:
+                    tone_examples = read_recent_monthly_sections(
+                        prop.live_doc_id,
+                        exclude_month=month_name,
+                        exclude_year=year,
+                        max_n=3,
+                    )
+                except Exception as e:
+                    print(f"    WARN: failed to read tone examples: {e}; proceeding without")
+
             print(f"    Found {len(messages)} new messages. Summarizing with Claude...")
             sections = extract_property_updates(
                 property_name=prop.name,
                 market_name=prop.market_name,
                 messages=messages,
                 api_key=config.ANTHROPIC_API_KEY,
+                existing_section=existing["text"] if existing else None,
+                tone_examples=tone_examples,
             )
 
-            # Order matters: prepend_update must succeed BEFORE we advance
-            # last_sync_timestamp. If prepend raises, the except below catches
+            # Order matters: the doc write must succeed BEFORE we advance
+            # last_sync_timestamp. If it raises, the except below catches
             # it, the timestamp stays put, and the next run re-processes these
             # messages (rather than silently dropping them).
             if sections is None:
@@ -96,12 +126,22 @@ def run() -> None:
                 month_year = now.strftime("%B %Y")
                 date_header = f"{month_year} Update - {prop.name}"
                 content = f"Hi [Name],\n\n{sections}"
-                prepend_update(
-                    doc_id=prop.live_doc_id,
-                    date_header=date_header,
-                    content=content,
-                )
-                print(f"    Appended update to doc.")
+                if existing:
+                    replace_section(
+                        doc_id=prop.live_doc_id,
+                        start_index=existing["start_index"],
+                        end_index=existing["end_index"],
+                        date_header=date_header,
+                        content=content,
+                    )
+                    print(f"    Merged update into existing {month_year} entry.")
+                else:
+                    prepend_update(
+                        doc_id=prop.live_doc_id,
+                        date_header=date_header,
+                        content=content,
+                    )
+                    print(f"    Prepended new {month_year} entry to doc.")
 
             # Only reached if prepend_update returned (or was skipped because
             # extraction found nothing meaningful — in which case re-processing
