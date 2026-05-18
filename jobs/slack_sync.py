@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 import time
 import config
 from services.slack_client import SlackRateLimitExceeded, get_messages_since
@@ -10,6 +11,23 @@ from services.google_docs import (
     replace_section,
 )
 from services.run_log import finalize_run, start_run
+
+
+_VERSION_SUFFIX_RE = re.compile(r"\(v(\d+)\)\s*$")
+
+
+def _next_version_suffix(existing_section_text: str) -> str:
+    """Return the '(vN)' suffix that the next revision of the month entry should carry.
+
+    The original entry has no suffix (implicit v1). The first replacement
+    becomes v2; a heading that already says '(v2)' rolls to '(v3)', etc.
+    Garbage suffixes ('(v)', no digits) collapse back to v2 — safer than
+    crashing the sync over a bad heading.
+    """
+    heading = existing_section_text.split("\n", 1)[0].strip()
+    match = _VERSION_SUFFIX_RE.search(heading)
+    next_n = int(match.group(1)) + 1 if match else 2
+    return f"(v{next_n})"
 
 
 def _doc_link(doc_id: str) -> str:
@@ -127,14 +145,16 @@ def run() -> None:
                 date_header = f"{month_year} Update - {prop.name}"
                 content = f"Hi [Name],\n\n{sections}"
                 if existing:
+                    version_suffix = _next_version_suffix(existing["text"])
+                    versioned_header = f"{date_header} {version_suffix}"
                     replace_section(
                         doc_id=prop.live_doc_id,
                         start_index=existing["start_index"],
                         end_index=existing["end_index"],
-                        date_header=date_header,
+                        date_header=versioned_header,
                         content=content,
                     )
-                    print(f"    Merged update into existing {month_year} entry.")
+                    print(f"    Merged update into existing {month_year} entry as {version_suffix}.")
                 else:
                     prepend_update(
                         doc_id=prop.live_doc_id,
