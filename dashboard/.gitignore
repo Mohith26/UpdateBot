@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Repo-level .gitignore has `*.json` (defense against committing SA keys).
+# Re-include the dashboard's tracked JSON files so Cloud Build can install deps.
+!package.json
+!package-lock.json
+!tsconfig.json

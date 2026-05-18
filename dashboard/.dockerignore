@@ -1,0 +1,12 @@
+node_modules
+.next
+.next/cache
+.env
+.env.*
+*.md
+.git
+.gitignore
+.DS_Store
+Dockerfile
+.dockerignore
+npm-debug.log*
