@@ -52,6 +52,33 @@ _HEADER_ROWS = 1
 _NUM_COLS = 14  # A through N
 
 
+def _validate_cell_cash_balance(value: str, prop_name: str) -> None:
+    """Validate cell_cash_balance is either empty or SHEET_ID:RANGE.
+
+    Empty is a valid "no cash balance configured" state and is skipped.
+    Otherwise the value must contain exactly one ':' separator with
+    non-empty halves on each side. Raises ValueError on invalid format.
+    """
+    if not value:
+        return
+    # Split on the FIRST ':' only — RANGE itself may contain ':' for
+    # multi-cell ranges like 'Sheet1!B5:C7'. Matches the consumer in
+    # jobs/monthly_report._read_cash_balance which uses split(':', 1).
+    parts = value.split(":", 1)
+    if len(parts) != 2:
+        raise ValueError(
+            f"Invalid cell_cash_balance for property '{prop_name}': "
+            f"expected 'SHEET_ID:RANGE' format with at least one ':' separator, "
+            f"got {value!r}"
+        )
+    sheet_id, cell_ref = parts[0].strip(), parts[1].strip()
+    if not sheet_id or not cell_ref:
+        raise ValueError(
+            f"Invalid cell_cash_balance for property '{prop_name}': "
+            f"both SHEET_ID and RANGE must be non-empty, got {value!r}"
+        )
+
+
 def load_properties() -> list[Property]:
     rows = read_range(CONFIG_SHEET_ID, "A1:N200")
     properties = []
@@ -59,9 +86,11 @@ def load_properties() -> list[Property]:
         row = row + [""] * (_NUM_COLS - len(row))
         if not row[_COL["property_name"]]:
             continue
+        prop_name = row[_COL["property_name"]]
+        _validate_cell_cash_balance(row[_COL["cell_cash_balance"]], prop_name)
         properties.append(
             Property(
-                name=row[_COL["property_name"]],
+                name=prop_name,
                 slack_channel_id=row[_COL["slack_channel_id"]],
                 live_doc_id=row[_COL["live_doc_id"]],
                 slides_template_id=row[_COL["slides_template_id"]],
