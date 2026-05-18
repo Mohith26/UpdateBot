@@ -1,9 +1,17 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Fragment, useEffect, useState } from "react";
 import type { Run, RunDetail } from "@/lib/sheets";
 import { formatDuration, formatLocal, parseTs, relativeTime } from "@/lib/time";
 import { StatusBadge } from "./StatusBadge";
+
+// While any row is in 'running' state, ping the server this often to pull
+// fresh data — independent of who triggered the job. Without this, a tab
+// left open after triggering can sit on a stale 'running' view because
+// JobTriggers' post-trigger refresh timers don't fire if the tab was hidden
+// or the user navigated away/back.
+const RUNNING_POLL_MS = 10_000;
 
 // Hardcoded to match deploy.sh — when those change, update here too.
 const GCP_PROJECT_ID = "harbor-updatebot";
@@ -126,7 +134,27 @@ function DetailItem({ d }: { d: RunDetail }) {
 }
 
 export function RunsTable({ runs }: { runs: Run[] }) {
+  const router = useRouter();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  const hasRunning = runs.some((r) => r.status === "running");
+  useEffect(() => {
+    if (!hasRunning) return;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const tick = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      router.refresh();
+    };
+    const onVisible = () => {
+      if (typeof document !== "undefined" && !document.hidden) router.refresh();
+    };
+    interval = setInterval(tick, RUNNING_POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [hasRunning, router]);
 
   if (runs.length === 0) {
     return (
